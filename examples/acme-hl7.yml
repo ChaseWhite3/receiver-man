@@ -1,12 +1,24 @@
 supplier: Acme HL7
 routeBy: pid.patientId
+receivers:
+  - id: hl7
+    parser: hl7
+  - id: streaming
+    parser: streaming
 scenarios:
   - name: Admission result flow
     expect:
       - name: Admission received
+        from: hl7
         within: 10s
         maxAge: 5m
+        emitName: admission-received
         emit: "admission:{{pid.patientId}}:{{msh.messageControlId}}"
+        payload:
+          patientId: "{{pid.patientId}}"
+          messageControlId: "{{msh.messageControlId}}"
+        effects:
+          nextReceiver: streaming
         match:
           - field: msh.messageType
             equals: ADT^A01
@@ -16,9 +28,14 @@ scenarios:
             exists: true
 
       - name: Observation result received
+        from: streaming
         within: 10s
         maxAge: 5m
+        emitName: result-received
         emit: "result:{{pid.patientId}}:{{obr.placerOrderNumber}}"
+        payload:
+          patientId: "{{pid.patientId}}"
+          placerOrderNumber: "{{obr.placerOrderNumber}}"
         match:
           - field: msh.messageType
             equals: ORU^R01

@@ -14,7 +14,7 @@ plugins {
     id 'maven-publish'
 }
 
-group = 'org.recieverman'
+group = 'org.receiverman'
 version = '0.1.0-SNAPSHOT'
 
 repositories {
@@ -43,7 +43,7 @@ base {
 
 application {
     // Define the main class for the application.
-    mainClass = 'org.recieverman.ReceiverMan'
+    mainClass = 'org.receiverman.ReceiverMan'
 }
 
 tasks.named('test') {
