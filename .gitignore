@@ -8,3 +8,8 @@ build
 # Ignore local IDE/compiler output
 app/bin/
 .vscode/
+gradlew
+gradlew.bat
+gradle/libs.versions.toml
+gradle/wrapper/gradle-wrapper.jar
+gradle/wrapper/gradle-wrapper.properties
