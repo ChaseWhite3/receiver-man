@@ -1,13 +1,18 @@
 package org.receiverman.domains;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.receiverman.descriptors.World;
 import org.receiverman.descriptors.entities.EventBus;
@@ -74,7 +79,7 @@ public final class ReceiverManBus {
    * The list contains one entry per scenario step, in fulfillment order, including the final step.
    */
   public CompletionStage<List<FulfillmentToken>> awaitAll() {
-    return awaitAll(null);
+    return awaitAll((String) null);
   }
 
   /**
@@ -84,6 +89,90 @@ public final class ReceiverManBus {
     List<FulfillmentToken> steps = new ArrayList<>();
     return doAwait(findScenario(scenarioName), steps::add)
         .thenApply(ignored -> List.copyOf(steps));
+  }
+
+  // --- Blocking convenience overloads (no CompletionStage required) ----------
+
+  /**
+   * Block until the first scenario is fulfilled and return its token, or throw if it
+   * does not complete within {@code timeout}.
+   *
+   * <pre>{@code
+   * FulfillmentToken token = bus.await(Duration.ofSeconds(10));
+   * }</pre>
+   *
+   * @throws ReceiverManExpectationException if the scenario fails, times out, or is interrupted.
+   */
+  public FulfillmentToken await(Duration timeout) {
+    return block(await(), timeout);
+  }
+
+  /**
+   * Block until the named scenario is fulfilled and return its token, or throw if it
+   * does not complete within {@code timeout}.
+   *
+   * @throws ReceiverManExpectationException if the scenario fails, times out, or is interrupted.
+   */
+  public FulfillmentToken await(String scenarioName, Duration timeout) {
+    return block(await(scenarioName), timeout);
+  }
+
+  /**
+   * Block until the first scenario is fulfilled and return the ordered list of all step tokens,
+   * or throw if it does not complete within {@code timeout}.
+   *
+   * <pre>{@code
+   * List<FulfillmentToken> trace = bus.awaitAll(Duration.ofSeconds(10));
+   * trace.forEach(t -> LOG.info("step: {} → {}", t.name(), t.value()));
+   * }</pre>
+   *
+   * @throws ReceiverManExpectationException if the scenario fails, times out, or is interrupted.
+   */
+  public List<FulfillmentToken> awaitAll(Duration timeout) {
+    return block(awaitAll(), timeout);
+  }
+
+  /**
+   * Block until the named scenario is fulfilled and return the ordered list of all step tokens,
+   * or throw if it does not complete within {@code timeout}.
+   *
+   * @throws ReceiverManExpectationException if the scenario fails, times out, or is interrupted.
+   */
+  public List<FulfillmentToken> awaitAll(String scenarioName, Duration timeout) {
+    return block(awaitAll(scenarioName), timeout);
+  }
+
+  /**
+   * Block on a {@link CompletionStage} that was obtained from an earlier {@code await*()} call,
+   * waiting up to {@code timeout}. Use this when you need to subscribe before the action that
+   * triggers events, then collect results afterwards:
+   *
+   * <pre>{@code
+   * var pending = bus.awaitAll();          // subscribe first
+   * triggerSomethingThatSendsEvents();
+   * var steps = bus.await(pending, Duration.ofSeconds(10)); // block after
+   * }</pre>
+   *
+   * @throws ReceiverManExpectationException if the stage fails, times out, or is interrupted.
+   */
+  public <T> T await(CompletionStage<T> pending, Duration timeout) {
+    return block(pending, timeout);
+  }
+
+  private <T> T block(CompletionStage<T> stage, Duration timeout) {
+    try {
+      return stage.toCompletableFuture().get(timeout.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (ExecutionException e) {
+      Throwable cause = e.getCause();
+      if (cause instanceof ReceiverManExpectationException rex) throw rex;
+      throw new ReceiverManExpectationException("Scenario failed: " + cause.getMessage(), cause);
+    } catch (TimeoutException e) {
+      throw new ReceiverManExpectationException(
+          "Scenario did not complete within " + timeout, e);
+    } catch (InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new ReceiverManExpectationException("Interrupted while awaiting scenario", e);
+    }
   }
 
   /** @deprecated Use {@link #await()} instead. */
@@ -132,6 +221,49 @@ public final class ReceiverManBus {
 
   public EventBus<ParsedEvent> events() {
     return events;
+  }
+
+  /**
+   * Start tracking a series of extracted values from all events on this bus.
+   * Call before sending events to capture everything from the start.
+   *
+   * <pre>{@code
+   * ValueSeries<Double> temps = bus.track(
+   *     event -> event.field("obx.temperature").map(Double::parseDouble)
+   * );
+   * }</pre>
+   *
+   * @param extractor returns the value to record, or {@link Optional#empty()} to skip the event
+   */
+  public <T extends Comparable<T>> ValueSeries<T> track(
+      Function<ParsedEvent, Optional<T>> extractor
+  ) {
+    return new ValueSeries<>(events, extractor);
+  }
+
+  /**
+   * Start tracking a series of extracted values from events arriving on a specific receiver.
+   * Events from other receivers are silently skipped.
+   *
+   * <pre>{@code
+   * ValueSeries<Double> temps = bus.track(
+   *     "vitals",
+   *     event -> event.field("obx.temperature").map(Double::parseDouble)
+   * );
+   * }</pre>
+   *
+   * @param receiverId only events whose {@code receiver} field equals this id are considered
+   * @param extractor  returns the value to record, or {@link Optional#empty()} to skip the event
+   */
+  public <T extends Comparable<T>> ValueSeries<T> track(
+      String receiverId,
+      Function<ParsedEvent, Optional<T>> extractor
+  ) {
+    return new ValueSeries<>(events, event ->
+        event.field("receiver").filter(receiverId::equals).isPresent()
+            ? extractor.apply(event)
+            : Optional.empty()
+    );
   }
 
   private SupplierScenario findScenario(String scenarioName) {
