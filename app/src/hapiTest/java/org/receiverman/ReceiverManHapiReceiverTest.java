@@ -87,16 +87,21 @@ public class ReceiverManHapiReceiverTest {
             .expect("Fever onset")
                 .from("vitals")
                 .where("msh.messageType").equalsTo("ORU^R01")
-                .where("obx.temperature").matches("3[89]\\.[0-9]+")
+                .where("obx.temperature").matches("3[89]\\.[0-9]+")  // 3        starts with 3
+                                                                                  // [89]     next digit is 8 or 9
+                                                                                  // \\.      literal decimal point
+                                                                                  // [0-9]+   one or more digits
                 .produces("fever-detected", "temp={{obx.temperature}}")
         .build();
 
+    // How we extract values from the events that are emitted by vitals.
     ValueSeries<Double> temps = bus.track(
         "vitals",
         event -> event.field("obx.temperature").map(Double::parseDouble)
     );
     CompletionStage<List<FulfillmentToken>> pending = bus.awaitAll();
 
+    //push stream of vitals messages with increasing temperatures
     bus.accept("vitals", "msh.messageType=ORU^R01 obx.temperature=36.5");
     bus.accept("vitals", "msh.messageType=ORU^R01 obx.temperature=37.0");
     bus.accept("vitals", "msh.messageType=ORU^R01 obx.temperature=37.8");
