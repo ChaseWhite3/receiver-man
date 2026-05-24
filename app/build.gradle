@@ -23,6 +23,8 @@ repositories {
 }
 
 dependencies {
+    api libs.slf4j.api
+
     // Use TestNG framework, also requires calling test.useTestNG() below
     testImplementation libs.testng
 }
@@ -49,6 +51,53 @@ application {
 tasks.named('test') {
     // Use TestNG for unit tests.
     useTestNG()
+}
+
+sourceSets {
+    hapiTest {
+        java.srcDir 'src/hapiTest/java'
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += output + compileClasspath
+    }
+}
+
+configurations {
+    hapiTestImplementation.extendsFrom testImplementation
+    hapiTestRuntimeOnly.extendsFrom testRuntimeOnly
+}
+
+dependencies {
+    hapiTestImplementation libs.hapi.base
+    hapiTestImplementation libs.hapi.structures.v25
+}
+
+tasks.register('hapiTest', Test) {
+    description = 'Runs optional HAPI HL7 receiver integration tests.'
+    group = 'verification'
+    testClassesDirs = sourceSets.hapiTest.output.classesDirs
+    classpath = sourceSets.hapiTest.runtimeClasspath
+    useTestNG()
+    shouldRunAfter test
+}
+
+tasks.register('debugHapiTest', Test) {
+    description = 'Runs the HAPI ReceiverMan integration test and waits for a debugger on port 5005.'
+    group = 'verification'
+    testClassesDirs = sourceSets.hapiTest.output.classesDirs
+    classpath = sourceSets.hapiTest.runtimeClasspath
+    useTestNG()
+    shouldRunAfter test
+    outputs.upToDateWhen { false }
+    filter {
+        includeTestsMatching 'org.receiverman.ReceiverManHapiReceiverTest.hapiSimpleServerCanFeedReceiverManBus'
+    }
+    debugOptions {
+        enabled = true
+        host = '*'
+        port = 5005
+        server = true
+        suspend = true
+    }
 }
 
 tasks.named('run') {

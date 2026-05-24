@@ -1,14 +1,15 @@
 package org.receiverman.domains;
 
 import java.time.Clock;
-import java.time.Instant;
-import java.util.LinkedHashMap;
-import java.util.Map;
 import java.util.Optional;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ReceiverManRuntime {
+  private static final Logger LOG = LoggerFactory.getLogger(ReceiverManRuntime.class);
+
   private final SupplierTemplate template;
   private final ReceiverRegistry registry;
   private final ScenarioRouter router;
@@ -40,20 +41,35 @@ public final class ReceiverManRuntime {
   }
 
   public Optional<RoutedFulfillment> accept(String receiverId, String raw) {
-    ReceiverSpec spec = template.receiver(receiverId)
-        .orElseThrow(() -> new IllegalArgumentException("Unknown receiver: " + receiverId));
-    ParsedEvent parsed = registry.requireParser(spec.parser()).parse(raw, Instant.now(clock));
-    ParsedEvent withReceiver = withReceiver(parsed, spec.id());
-    return router.route(withReceiver);
+    return acceptResult(receiverId, raw).fulfillment();
+  }
+
+  public RoutedAcceptResult acceptResult(String receiverId, String raw) {
+    ParsedEvent event = ReceiverInput.parse(template, registry, clock, receiverId, raw);
+    LOG.debug(
+        "ReceiverMan routing message from receiver='{}', parser='{}', routeField='{}', fields={}, raw='{}'",
+        event.field("receiver").orElse("<missing>"),
+        event.field("parser").orElse("<missing>"),
+        router.routeField(),
+        event.fields(),
+        event.raw()
+    );
+    RoutedAcceptResult result = router.routeResult(event);
+    if (result.result().status() == AcceptResult.Status.WAITING
+        || result.result().status() == AcceptResult.Status.FAILED
+        || result.result().status() == AcceptResult.Status.IGNORED) {
+      LOG.warn(
+          "ReceiverMan did not fulfill routeKey='{}', status='{}'.{}{}",
+          result.routeKey(),
+          result.result().status(),
+          System.lineSeparator(),
+          result.result().diagnostic()
+      );
+    }
+    return result;
   }
 
   public ScenarioRouter router() {
     return router;
-  }
-
-  private static ParsedEvent withReceiver(ParsedEvent event, String receiverId) {
-    Map<String, String> fields = new LinkedHashMap<>(event.fields());
-    fields.put("receiver", receiverId);
-    return ParsedEvent.of(event.raw(), event.receivedAt(), fields);
   }
 }

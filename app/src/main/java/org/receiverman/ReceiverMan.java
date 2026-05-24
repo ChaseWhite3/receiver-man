@@ -24,8 +24,12 @@ import org.receiverman.domains.SupplierCatalog;
 import org.receiverman.domains.SupplierScenario;
 import org.receiverman.domains.SupplierTemplate;
 import org.receiverman.domains.SupplierTemplateLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public class ReceiverMan {
+  private static final Logger LOG = LoggerFactory.getLogger(ReceiverMan.class);
+
   private final SupplierCatalog catalog;
   private final ScenarioVerifier verifier;
   private final EventParser parser;
@@ -52,7 +56,7 @@ public class ReceiverMan {
       try {
         app.runStreamCommand(args, System.in, System.out);
       } catch (RuntimeException | java.io.IOException ex) {
-        System.err.println("ERROR " + ex.getMessage());
+        LOG.error("ReceiverMan stream command failed", ex);
       }
     } else {
       app.run(System.in, System.out);

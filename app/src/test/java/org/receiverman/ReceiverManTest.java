@@ -35,14 +35,18 @@ import org.receiverman.domains.EventExpect;
 import org.receiverman.domains.FieldAssertion;
 import org.receiverman.domains.FulfillmentToken;
 import org.receiverman.domains.FulfillmentReport;
+import org.receiverman.domains.AcceptResult;
+import org.receiverman.domains.ReceiverManIntensions;
 import org.receiverman.domains.RoutedFulfillment;
 import org.receiverman.domains.ScenarioCompiler;
 import org.receiverman.domains.ScenarioRouter;
 import org.receiverman.domains.ScenarioRun;
 import org.receiverman.domains.ScenarioVerifier;
 import org.receiverman.domains.StreamingScenarioVerifier;
+import org.receiverman.domains.ReceiverManBus;
 import org.receiverman.domains.ReceiverManRuntime;
 import org.receiverman.domains.ReceiverRegistry;
+import org.receiverman.domains.ReceiverManExpectationException;
 import org.receiverman.domains.Supplier;
 import org.receiverman.domains.SupplierScenario;
 import org.receiverman.domains.SupplierTemplate;
@@ -322,6 +326,94 @@ public class ReceiverManTest {
         assertTrue(runtime.router().run("P123").orElseThrow().complete());
     }
 
+    @Test public void receiverManBusAwaitsScenarioAndAcceptsRawReceiverMessages() throws Exception {
+        SupplierScenario scenario = ReceiverManIntensions.scenario("HL7 then streaming")
+            .expect("Admission received")
+                .from("hl7")
+                .where("msh.messageType").equalsTo("ADT^A01")
+                .emit("admission:{{pid.patientId}}")
+            .thenExpect("Streaming update")
+                .from("streaming")
+                .where("eventType").equalsTo("patient.updated")
+                .emitName("streaming-update")
+                .emit("streaming:{{pid.patientId}}")
+            .buildScenario();
+        SupplierTemplate template = new SupplierTemplate(
+            new Supplier("Acme", List.of(scenario)),
+            "pid.patientId",
+            List.of(
+                new org.receiverman.domains.ReceiverSpec("hl7", "hl7"),
+                new org.receiverman.domains.ReceiverSpec("streaming", "streaming")
+            )
+        );
+        ReceiverRegistry registry = new ReceiverRegistry()
+            .parser("hl7", (raw, receivedAt) -> ParsedEvent.of(raw, receivedAt, Map.of(
+                "msh.messageType", raw,
+                "pid.patientId", "P123"
+            )))
+            .parser("streaming", (raw, receivedAt) -> ParsedEvent.of(raw, receivedAt, Map.of(
+                "eventType", raw,
+                "pid.patientId", "P123"
+            )));
+        ReceiverManBus bus = ReceiverManBus.fromTemplate(
+            template,
+            registry,
+            Clock.fixed(Instant.parse("2026-05-24T12:00:00Z"), ZoneOffset.UTC)
+        );
+
+        CompletionStage<FulfillmentToken> done = bus.await("HL7 then streaming");
+        bus.accept("hl7", "ADT^A01");
+        bus.accept("streaming", "patient.updated");
+
+        FulfillmentToken token = done.toCompletableFuture().get(1, TimeUnit.SECONDS);
+        assertEquals(token.name(), "streaming-update");
+        assertEquals(token.value(), "streaming:P123");
+    }
+
+    @Test public void receiverManBusExplainsExpectationFailuresWithReceiverParserAndMessage() throws Exception {
+        SupplierScenario scenario = ReceiverManIntensions.scenario("HL7 admission")
+            .expect("Admission received")
+                .from("hl7")
+                .where("msh.messageType").equalsTo("ADT^A01")
+                .where("msh.messageControlId").matches("^ACME-[0-9]+$")
+                .within(Duration.ofMillis(100))
+                .emit("admission:{{pid.patientId}}")
+            .buildScenario();
+        SupplierTemplate template = new SupplierTemplate(
+            new Supplier("Acme", List.of(scenario)),
+            "pid.patientId",
+            List.of(new org.receiverman.domains.ReceiverSpec("hl7", "hl7-parser"))
+        );
+        ReceiverRegistry registry = new ReceiverRegistry()
+            .parser("hl7-parser", (raw, receivedAt) -> ParsedEvent.of(raw, receivedAt, Map.of(
+                "msh.messageType", "ORU^R01",
+                "msh.messageControlId", "BAD-1",
+                "pid.patientId", "P123"
+            )));
+        ReceiverManBus bus = ReceiverManBus.fromTemplate(
+            template,
+            registry,
+            Clock.systemUTC()
+        );
+
+        CompletionStage<FulfillmentToken> done = bus.await("HL7 admission");
+        bus.accept("hl7", "MSH|...|ORU^R01|BAD-1");
+
+        Exception thrown = expectThrows(Exception.class, () ->
+            done.toCompletableFuture().get(1, TimeUnit.SECONDS)
+        );
+        Throwable cause = thrown.getCause();
+        assertTrue(cause instanceof ReceiverManExpectationException, String.valueOf(cause));
+        String message = cause.getMessage();
+        assertTrue(message.contains("Supplier: Acme"), message);
+        assertTrue(message.contains("Scenario: HL7 admission"), message);
+        assertTrue(message.contains("receiver=hl7"), message);
+        assertTrue(message.contains("parser=hl7-parser"), message);
+        assertTrue(message.contains("msh.messageType expected equal to 'ADT^A01' but was 'ORU^R01'"), message);
+        assertTrue(message.contains("msh.messageControlId expected to match '^ACME-[0-9]+$' but was 'BAD-1'"), message);
+        assertTrue(message.contains("MSH|...|ORU^R01|BAD-1"), message);
+    }
+
     @Test public void conditionCanRequireReceiverDependency() {
         Instant now = Instant.parse("2026-05-24T12:00:00Z");
         Condition condition = new Condition(
@@ -336,6 +428,36 @@ public class ReceiverManTest {
 
         assertTrue(condition.matches(parser.parse("receiver=hl7 msh.messageType=ADT^A01 pid.patientId=P123", now), now));
         assertFalse(condition.matches(parser.parse("receiver=streaming msh.messageType=ADT^A01 pid.patientId=P123", now), now));
+    }
+
+    @Test public void runtimeAcceptResultExposesMismatchDiagnostics() {
+        Instant now = Instant.parse("2026-05-24T12:00:00Z");
+        SupplierScenario scenario = ReceiverManIntensions.scenario("Admission")
+            .expect("Admission received")
+                .from("hl7")
+                .where("msh.messageType").equalsTo("ADT^A01")
+                .emit("admission:{{pid.patientId}}")
+            .buildScenario();
+        SupplierTemplate template = new SupplierTemplate(
+            new Supplier("Acme", List.of(scenario)),
+            "pid.patientId",
+            List.of(new org.receiverman.domains.ReceiverSpec("hl7", "default"))
+        );
+        ReceiverManRuntime runtime = ReceiverManRuntime.fromTemplate(
+            template,
+            new ReceiverRegistry(),
+            Clock.fixed(now, ZoneOffset.UTC)
+        );
+
+        AcceptResult result = runtime.acceptResult(
+            "hl7",
+            "msh.messageType=ORU^R01 pid.patientId=P123"
+        ).result();
+
+        assertEquals(result.status(), AcceptResult.Status.WAITING);
+        assertTrue(result.diagnostic().contains("Actual receiver: hl7"), result.diagnostic());
+        assertTrue(result.diagnostic().contains("Actual parser: default"), result.diagnostic());
+        assertTrue(result.diagnostic().contains("msh.messageType expected equal to 'ADT^A01' but was 'ORU^R01'"), result.diagnostic());
     }
 
     @Test public void routerKeepsInterleavedScenarioInstancesSeparate() {
@@ -385,6 +507,56 @@ public class ReceiverManTest {
         assertEquals(p1.accept(parser.parse("type=ORU^R01 patientId=P1", now.plusSeconds(1))).orElseThrow().token(), "result:P1");
         assertTrue(p1.complete());
         assertFalse(p2.complete());
+    }
+
+    @Test public void acceptResultReportsAdvancedCompletedAndWaitingStates() {
+        Instant now = Instant.parse("2026-05-24T12:00:00Z");
+        Clock clock = Clock.fixed(now, ZoneOffset.UTC);
+        Supplier supplier = new Supplier("Demo Supplier", List.of());
+        SupplierScenario scenario = new SupplierScenario("Admission result flow", List.of(
+            new Condition("Admission received", "msh.messageType", "ADT^A01", Duration.ofMinutes(10), Duration.ofSeconds(10), "admission:{{pid.patientId}}"),
+            new Condition("Result received", "msh.messageType", "ORU^R01", Duration.ofMinutes(10), Duration.ofSeconds(10), "result:{{pid.patientId}}")
+        ));
+        ScenarioRun run = new ScenarioCompiler().compile(supplier, scenario).start(clock);
+        DefaultEventParser parser = new DefaultEventParser();
+
+        AcceptResult waiting = run.acceptResult(parser.parse("type=ORU^R01 patientId=P1", now));
+        AcceptResult advanced = run.acceptResult(parser.parse("type=ADT^A01 patientId=P1", now.plusSeconds(1)));
+        AcceptResult completed = run.acceptResult(parser.parse("type=ORU^R01 patientId=P1", now.plusSeconds(2)));
+
+        assertEquals(waiting.status(), AcceptResult.Status.WAITING);
+        assertEquals(advanced.status(), AcceptResult.Status.ADVANCED);
+        assertEquals(advanced.token().value(), "admission:P1");
+        assertEquals(completed.status(), AcceptResult.Status.COMPLETED);
+        assertEquals(completed.token().value(), "result:P1");
+    }
+
+    @Test public void fluentScenarioBuilderCreatesOrderedScenario() {
+        Instant now = Instant.parse("2026-05-24T12:00:00Z");
+        Clock clock = Clock.fixed(now, ZoneOffset.UTC);
+        Supplier supplier = new Supplier("Demo Supplier", List.of());
+        SupplierScenario scenario = ReceiverManIntensions.scenario("Admission result flow")
+            .expect("Admission received")
+                .from("hl7")
+                .where("msh.messageType").equalsTo("ADT^A01")
+                .emitName("admission-received")
+                .emit("admission:{{pid.patientId}}")
+            .thenExpect("Result received")
+                .from("streaming")
+                .where("msh.messageType").equalsTo("ORU^R01")
+                .emitName("result-received")
+                .emit("result:{{pid.patientId}}")
+            .buildScenario();
+        ScenarioRouter router = new ScenarioRouter(supplier, scenario, "patientId", clock);
+        DefaultEventParser parser = new DefaultEventParser();
+
+        AcceptResult first = router.routeResult(parser.parse("receiver=hl7 type=ADT^A01 patientId=P1", now)).result();
+        AcceptResult second = router.routeResult(parser.parse("receiver=streaming type=ORU^R01 patientId=P1", now.plusSeconds(1))).result();
+
+        assertEquals(first.status(), AcceptResult.Status.ADVANCED);
+        assertEquals(first.token().name(), "admission-received");
+        assertEquals(second.status(), AcceptResult.Status.COMPLETED);
+        assertEquals(second.token().value(), "result:P1");
     }
 
     @Test public void compilerCanProduceMonadicIntensionForScenario() throws Exception {

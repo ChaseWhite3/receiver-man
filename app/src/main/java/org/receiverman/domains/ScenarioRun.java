@@ -6,8 +6,12 @@ import java.time.Instant;
 import java.util.Optional;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class ScenarioRun {
+  private static final Logger LOG = LoggerFactory.getLogger(ScenarioRun.class);
+
   private final CompiledScenario compiledScenario;
   private final Clock clock;
   private int nextStepIndex;
@@ -21,22 +25,53 @@ public final class ScenarioRun {
   }
 
   public Optional<FulfillmentToken> accept(ParsedEvent event) {
+    return acceptResult(event).tokenOptional();
+  }
+
+  public AcceptResult acceptResult(ParsedEvent event) {
     if (failed || complete()) {
-      return Optional.empty();
+      return AcceptResult.ignored();
     }
 
     Condition step = compiledScenario.steps().get(nextStepIndex);
     if (event.receivedAt().isAfter(cursor.plus(step.timeout()))) {
       failed = true;
-      return Optional.empty();
+      String diagnostic = step.diagnose(event, clock.instant());
+      LOG.warn(
+          "ReceiverMan scenario step timed out. supplier='{}', scenario='{}', step='{}'.{}{}",
+          compiledScenario.supplier().name(),
+          compiledScenario.scenario().name(),
+          step.name(),
+          System.lineSeparator(),
+          diagnostic
+      );
+      return AcceptResult.failed(diagnostic);
     }
     if (!step.matches(event, clock.instant())) {
-      return Optional.empty();
+      String diagnostic = step.diagnose(event, clock.instant());
+      LOG.debug(
+          "ReceiverMan scenario step not fulfilled yet. supplier='{}', scenario='{}', step='{}'.{}{}",
+          compiledScenario.supplier().name(),
+          compiledScenario.scenario().name(),
+          step.name(),
+          System.lineSeparator(),
+          diagnostic
+      );
+      return AcceptResult.waiting(diagnostic);
     }
 
     cursor = event.receivedAt();
     nextStepIndex++;
-    return Optional.of(step.renderFulfillment(compiledScenario.supplier(), compiledScenario.scenario(), event));
+    FulfillmentToken token = step.renderFulfillment(compiledScenario.supplier(), compiledScenario.scenario(), event);
+    LOG.info(
+        "ReceiverMan fulfilled step. supplier='{}', scenario='{}', step='{}', tokenName='{}', tokenValue='{}'",
+        compiledScenario.supplier().name(),
+        compiledScenario.scenario().name(),
+        step.name(),
+        token.name(),
+        token.value()
+    );
+    return complete() ? AcceptResult.completed(token) : AcceptResult.advanced(token);
   }
 
   public boolean complete() {

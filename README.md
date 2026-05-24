@@ -80,6 +80,57 @@ SupplierScenario
 
 That form subscribes to an `EventStream<ParsedEvent>`, sequences the ordered conditions with `Intensions.then(...)`, and completes with the final fulfillment token.
 
+Java callers can also build scenarios fluently instead of writing YAML:
+
+```java
+SupplierScenario scenario = ReceiverManIntensions.scenario("Admission result flow")
+    .expect("Admission received")
+        .from("hl7")
+        .where("msh.messageType").equalsTo("ADT^A01")
+        .emitName("admission-received")
+        .emit("admission:{{pid.patientId}}")
+    .thenExpect("Result received")
+        .from("streaming")
+        .where("msh.messageType").equalsTo("ORU^R01")
+        .emitName("result-received")
+        .emit("result:{{pid.patientId}}")
+    .buildScenario();
+```
+
+At runtime, `acceptResult(...)` gives a richer push-based result than `Optional`:
+
+```java
+AcceptResult result = scenarioRun.acceptResult(event);
+
+result
+    .ifFulfilled(token -> System.out.println(token.value()))
+    .ifComplete(token -> System.out.println("scenario complete"))
+    .ifFailed(() -> System.out.println("scenario failed"));
+```
+
+`ScenarioRouter.routeResult(event)` returns the same result with the route key attached.
+
+For async stream-style usage without manually touching `EventBus`, use `ReceiverManBus`:
+
+```java
+ReceiverManBus bus = ReceiverManBus.fromTemplate(
+    template,
+    registry,
+    Clock.systemUTC()
+);
+
+CompletionStage<FulfillmentToken> done = bus.await("Admission result flow");
+
+// Inside receiver callbacks:
+hl7Receiver.onMessage(raw -> bus.accept("hl7", raw));
+streamingReceiver.onMessage(raw -> bus.accept("streaming", raw));
+
+done.thenAccept(token -> {
+    System.out.println(token.name());
+    System.out.println(token.payload());
+});
+```
+
 Template files use this shape:
 
 ```yaml

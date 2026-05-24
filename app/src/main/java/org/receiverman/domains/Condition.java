@@ -115,6 +115,40 @@ public record Condition(
         && assertions.stream().allMatch(assertion -> assertion.matches(event));
   }
 
+  public String diagnose(ParsedEvent event, Instant now) {
+    StringBuilder diagnostic = new StringBuilder();
+    Duration age = Duration.between(event.receivedAt(), now).abs();
+    diagnostic.append("Condition '").append(name).append("' was not fulfilled.");
+    diagnostic.append(System.lineSeparator()).append("Expected receiver: ")
+        .append(receiver == null ? "<any>" : receiver);
+    diagnostic.append(System.lineSeparator()).append("Actual receiver: ")
+        .append(event.field("receiver").orElse("<missing>"));
+    diagnostic.append(System.lineSeparator()).append("Actual parser: ")
+        .append(event.field("parser").orElse("<missing>"));
+    diagnostic.append(System.lineSeparator()).append("Expected assertions: ")
+        .append(describeAssertions());
+    diagnostic.append(System.lineSeparator()).append("Actual fields: ")
+        .append(event.fields());
+    diagnostic.append(System.lineSeparator()).append("Raw message: ")
+        .append(event.raw());
+
+    if (receiver != null && event.field("receiver").map(receiver::equals).orElse(false) == false) {
+      diagnostic.append(System.lineSeparator()).append("- receiver expected '")
+          .append(receiver).append("' but was '")
+          .append(event.field("receiver").orElse("<missing>")).append("'");
+    }
+    if (age.compareTo(maxAge) > 0) {
+      diagnostic.append(System.lineSeparator()).append("- message age ")
+          .append(age).append(" exceeded maxAge ").append(maxAge);
+    }
+    assertions.stream()
+        .filter(assertion -> !assertion.matches(event))
+        .map(assertion -> "- " + assertion.diagnose(event))
+        .forEach(line -> diagnostic.append(System.lineSeparator()).append(line));
+
+    return diagnostic.toString();
+  }
+
   public String describeAssertions() {
     return assertions.stream()
         .map(FieldAssertion::describe)

@@ -1,6 +1,5 @@
 package org.receiverman.domains;
 
-import java.time.Instant;
 import java.util.List;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
@@ -34,7 +33,7 @@ public final class ScenarioCompiler {
       Condition condition
   ) {
     return Intensions.map(
-        Become.firstMatch(event -> condition.matches(event, Instant.now()), condition.timeout()),
+        Become.firstMatch(event -> condition.matches(event, event.receivedAt()), condition.timeout()),
         event -> condition.renderFulfillment(supplier, scenario, event)
     );
   }

@@ -31,9 +31,13 @@ public final class ScenarioRouter {
   }
 
   public Optional<RoutedFulfillment> route(ParsedEvent event) {
+    return routeResult(event).fulfillment();
+  }
+
+  public RoutedAcceptResult routeResult(ParsedEvent event) {
     Optional<String> maybeKey = event.field(routeField).filter(value -> !value.isBlank());
     if (maybeKey.isEmpty()) {
-      return Optional.empty();
+      return new RoutedAcceptResult("", AcceptResult.ignored());
     }
 
     String routeKey = maybeKey.get();
@@ -43,8 +47,7 @@ public final class ScenarioRouter {
     );
 
     synchronized (run) {
-      return run.accept(event)
-          .map(token -> new RoutedFulfillment(routeKey, token));
+      return new RoutedAcceptResult(routeKey, run.acceptResult(event));
     }
   }
 

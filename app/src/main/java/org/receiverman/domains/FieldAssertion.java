@@ -44,6 +44,17 @@ public record FieldAssertion(String field, Operator operator, String value) {
     };
   }
 
+  public String diagnose(ParsedEvent event) {
+    String actual = event.field(field).orElse(null);
+    if (actual == null || actual.isBlank()) {
+      return field + " expected " + describeExpectation() + " but was missing";
+    }
+    if (matches(event)) {
+      return field + " matched " + describeExpectation() + " with actual " + quote(actual);
+    }
+    return field + " expected " + describeExpectation() + " but was " + quote(actual);
+  }
+
   public String describe() {
     return switch (operator) {
       case EQUALS -> field + "=" + value;
@@ -51,6 +62,19 @@ public record FieldAssertion(String field, Operator operator, String value) {
       case CONTAINS -> field + " contains " + value;
       case MATCHES -> field + " matches " + value;
     };
+  }
+
+  private String describeExpectation() {
+    return switch (operator) {
+      case EQUALS -> "equal to " + quote(value);
+      case EXISTS -> "to exist";
+      case CONTAINS -> "to contain " + quote(value);
+      case MATCHES -> "to match " + quote(value);
+    };
+  }
+
+  private static String quote(String value) {
+    return "'" + value + "'";
   }
 
   public enum Operator {
