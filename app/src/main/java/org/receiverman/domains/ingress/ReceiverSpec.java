@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.ingress;
 
 public record ReceiverSpec(String id, String parser) {
   public ReceiverSpec {

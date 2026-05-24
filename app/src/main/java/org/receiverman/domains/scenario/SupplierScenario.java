@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.scenario;
 
 import java.util.List;
 

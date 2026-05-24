@@ -19,8 +19,10 @@ ReceiverManBus bus = ReceiverManBus.builder()
             .produces("result-received", "result:{{pid.patientId}}")
     .build();
 
-// This future already exists. It will complete when the world catches up.
-List<FulfillmentToken> trace = bus.awaitAll().toCompletableFuture().get(30, SECONDS);
+// Subscribe before the events arrive, then block after.
+var pending = bus.awaitAll();
+triggerSomethingThatSendsEvents();
+List<FulfillmentToken> trace = bus.await(pending, Duration.ofSeconds(30));
 ```
 
 `bus.awaitAll()` hands you back a `List<FulfillmentToken>` that *will exist*, and you write code against it as if it already does. The steps in the builder are not instructions to execute — they are a contract about what the event stream is expected to contain.
@@ -91,22 +93,70 @@ admission:{{pid.patientId}}:{{msh.messageControlId}}
 
 Scenario order provides sequencing. Supplier templates should describe ordered conditions; callers do not need to use the lower-level `Intensions.then(...)` API directly.
 
+## Package layout
+
+The codebase is organized around the router analogy — events arrive, get decoded, get dispatched by a route key, advance a scenario run, and exit as a fulfillment token.
+
+```
+domains/
+├── ReceiverManBus          ← primary API entry point
+├── ReceiverManBuilder      ← fluent builder for the bus
+├── ReceiverManRuntime      ← lower-level runtime (ScenarioRouter-based)
+├── ReceiverManIntensions   ← lower-level intension/builder API
+│
+├── ingress/                ← raw message → ParsedEvent
+│   ├── EventParser         (interface)
+│   ├── DefaultEventParser
+│   ├── ReceiverSpec
+│   ├── ReceiverRegistry
+│   └── ReceiverInput
+│
+├── scenario/               ← the declared contract (the routing table)
+│   ├── SupplierScenario
+│   ├── Condition
+│   ├── FieldAssertion
+│   ├── TokenSpec
+│   ├── EventExpect
+│   └── ScenarioBuilder
+│
+├── routing/                ← dispatch by route key, advance scenario runs
+│   ├── ScenarioRouter
+│   ├── ScenarioRun
+│   ├── ScenarioCompiler
+│   ├── CompiledScenario
+│   ├── ScenarioVerifier
+│   ├── StreamingScenarioVerifier
+│   ├── AcceptResult
+│   ├── RoutedAcceptResult
+│   └── RoutedFulfillment
+│
+├── fulfillment/            ← what exits the system when conditions are met
+│   ├── FulfillmentToken
+│   ├── FulfillmentReport
+│   └── ValueSeries
+│
+└── supplier/               ← config / YAML template layer
+    ├── Supplier
+    ├── SupplierTemplate
+    ├── SupplierTemplateLoader
+    └── SupplierCatalog
+```
+
 Internally, a template scenario is compiled once into a reusable `CompiledScenario`. Each route key then starts its own mutable `ScenarioRun` from that compiled plan:
 
 ```text
-YAML template
-  -> SupplierScenario
-  -> ScenarioCompiler
-  -> CompiledScenario
-  -> ScenarioRouter creates one ScenarioRun per route key
+supplier/SupplierTemplateLoader  → supplier/SupplierTemplate
+  → scenario/SupplierScenario
+  → routing/ScenarioCompiler     → routing/CompiledScenario
+  → routing/ScenarioRouter creates one routing/ScenarioRun per route key
 ```
 
 The same `ScenarioCompiler` can also compile a scenario into the lower-level monadic stream model:
 
 ```text
-SupplierScenario
-  -> ScenarioCompiler
-  -> Intension<ParsedEvent, FulfillmentToken>
+scenario/SupplierScenario
+  → routing/ScenarioCompiler
+  → Intension<ParsedEvent, fulfillment/FulfillmentToken>
 ```
 
 That form subscribes to an `EventStream<ParsedEvent>`, sequences the ordered conditions with `Intensions.then(...)`, and completes with the final fulfillment token.
@@ -141,25 +191,44 @@ result
 
 `ScenarioRouter.routeResult(event)` returns the same result with the route key attached.
 
-For async stream-style usage without manually touching `EventBus`, use `ReceiverManBus`:
+For async stream-style usage, `ReceiverManBus` is the primary entry point. The fluent builder registers receivers and scenarios without touching any internal plumbing:
 
 ```java
-ReceiverManBus bus = ReceiverManBus.fromTemplate(
-    template,
-    registry,
-    Clock.systemUTC()
-);
+ReceiverManBus bus = ReceiverManBus.builder()
+    .receiver("hl7", new Hl7Parser())
+    .receiver("streaming", new StreamingParser())
+    .scenario("Admission result flow")
+        .expect("Admission received")
+            .from("hl7")
+            .where("msh.messageType").equalsTo("ADT^A01")
+            .produces("admitted", "admission:{{pid.patientId}}")
+        .thenExpect("Streaming update received")
+            .from("streaming")
+            .where("eventType").equalsTo("patient.updated")
+            .produces("updated", "update:{{pid.patientId}}")
+    .build();
 
-CompletionStage<FulfillmentToken> done = bus.await("Admission result flow");
+// Subscribe before triggering events, block after.
+var pending = bus.awaitAll();
 
-// Inside receiver callbacks:
 hl7Receiver.onMessage(raw -> bus.accept("hl7", raw));
 streamingReceiver.onMessage(raw -> bus.accept("streaming", raw));
 
-done.thenAccept(token -> {
-    System.out.println(token.name());
-    System.out.println(token.payload());
-});
+List<FulfillmentToken> trace = bus.await(pending, Duration.ofSeconds(30));
+trace.forEach(t -> System.out.println(t.name() + " → " + t.value()));
+```
+
+You can also get notified as each step completes rather than waiting for the whole scenario:
+
+```java
+bus.await(token -> LOG.info("step fulfilled: {} = {}", token.name(), token.value()),
+          Duration.ofSeconds(30));
+```
+
+Or if you only need the final token:
+
+```java
+FulfillmentToken last = bus.await(Duration.ofSeconds(30));
 ```
 
 Template files use this shape:
@@ -248,6 +317,12 @@ receivers:
 The host app registers parser implementations and calls the runtime with the receiver ID plus raw message:
 
 ```java
+import org.receiverman.domains.ReceiverManRuntime;
+import org.receiverman.domains.ingress.ReceiverRegistry;
+import org.receiverman.domains.routing.RoutedFulfillment;
+import org.receiverman.domains.supplier.SupplierTemplate;
+import org.receiverman.domains.supplier.SupplierTemplateLoader;
+
 ReceiverRegistry registry = new ReceiverRegistry()
     .parser("hl7", new Hl7Parser())
     .parser("streaming", new StreamingParser());
@@ -268,6 +343,37 @@ runtime.accept("hl7", rawHl7Message)
         }
     });
 ```
+
+## Tracking value series
+
+`bus.track()` opens a `ValueSeries<T>` that collects one extracted value per event, in arrival order. Call it before sending events so nothing is missed, then inspect the series after.
+
+```java
+ValueSeries<Double> temps = bus.track(
+    "vitals",
+    event -> event.field("obx.temperature").map(Double::parseDouble)
+);
+
+// later, after events have arrived:
+temps.values();          // [36.5, 37.0, 37.8, 38.3]
+temps.isIncreasing();    // true — every value strictly greater than the last
+temps.isNonDecreasing(); // true — allows plateaus
+temps.peak();            // Optional[38.3]
+temps.trough();          // Optional[36.5]
+temps.first();           // Optional[36.5]
+temps.last();            // Optional[38.3]
+temps.size();            // 4
+```
+
+Omit the receiver id to collect from all receivers:
+
+```java
+ValueSeries<Double> allTemps = bus.track(
+    event -> event.field("obx.temperature").map(Double::parseDouble)
+);
+```
+
+Events where the extractor returns `Optional.empty()` are silently skipped, so a single series can watch one field across a mixed event stream. Call `temps.stop()` to cancel the subscription when done.
 
 ## Using ReceiverMan as a Java Library
 
@@ -304,12 +410,12 @@ import java.time.Clock;
 import java.time.Instant;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
-import org.receiverman.domains.DefaultEventParser;
-import org.receiverman.domains.RoutedFulfillment;
-import org.receiverman.domains.ScenarioRouter;
-import org.receiverman.domains.SupplierScenario;
-import org.receiverman.domains.SupplierTemplate;
-import org.receiverman.domains.SupplierTemplateLoader;
+import org.receiverman.domains.ingress.DefaultEventParser;
+import org.receiverman.domains.routing.RoutedFulfillment;
+import org.receiverman.domains.routing.ScenarioRouter;
+import org.receiverman.domains.scenario.SupplierScenario;
+import org.receiverman.domains.supplier.SupplierTemplate;
+import org.receiverman.domains.supplier.SupplierTemplateLoader;
 
 SupplierTemplate template = new SupplierTemplateLoader().load(Path.of("acme-hl7.yml"));
 SupplierScenario scenario = template.supplier().scenarios().getFirst();

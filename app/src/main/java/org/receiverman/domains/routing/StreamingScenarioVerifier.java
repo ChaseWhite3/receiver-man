@@ -1,10 +1,13 @@
-package org.receiverman.domains;
+package org.receiverman.domains.routing;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Optional;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
+import org.receiverman.domains.fulfillment.FulfillmentToken;
+import org.receiverman.domains.scenario.SupplierScenario;
+import org.receiverman.domains.supplier.Supplier;
 
 public final class StreamingScenarioVerifier {
   private final ScenarioRun run;

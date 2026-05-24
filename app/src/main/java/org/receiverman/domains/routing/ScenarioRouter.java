@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.routing;
 
 import java.time.Clock;
 import java.util.Map;
@@ -6,7 +6,8 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
-
+import org.receiverman.domains.scenario.SupplierScenario;
+import org.receiverman.domains.supplier.Supplier;
 
 /**
  * Routes events to compiled scenario runs based on a correlation field.

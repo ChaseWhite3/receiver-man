@@ -28,29 +28,29 @@ import org.receiverman.descriptors.entities.Event;
 import org.receiverman.descriptors.entities.EventBus;
 import org.receiverman.descriptors.entities.ParsedEvent;
 import org.receiverman.descriptors.functional.Intension;
-import org.receiverman.domains.Condition;
-import org.receiverman.domains.CompiledScenario;
-import org.receiverman.domains.DefaultEventParser;
-import org.receiverman.domains.EventExpect;
-import org.receiverman.domains.FieldAssertion;
-import org.receiverman.domains.FulfillmentToken;
-import org.receiverman.domains.FulfillmentReport;
-import org.receiverman.domains.AcceptResult;
-import org.receiverman.domains.ReceiverManIntensions;
-import org.receiverman.domains.RoutedFulfillment;
-import org.receiverman.domains.ScenarioCompiler;
-import org.receiverman.domains.ScenarioRouter;
-import org.receiverman.domains.ScenarioRun;
-import org.receiverman.domains.ScenarioVerifier;
-import org.receiverman.domains.StreamingScenarioVerifier;
 import org.receiverman.domains.ReceiverManBus;
-import org.receiverman.domains.ReceiverManRuntime;
-import org.receiverman.domains.ReceiverRegistry;
 import org.receiverman.domains.ReceiverManExpectationException;
-import org.receiverman.domains.Supplier;
-import org.receiverman.domains.SupplierScenario;
-import org.receiverman.domains.SupplierTemplate;
-import org.receiverman.domains.SupplierTemplateLoader;
+import org.receiverman.domains.ReceiverManIntensions;
+import org.receiverman.domains.ReceiverManRuntime;
+import org.receiverman.domains.fulfillment.FulfillmentReport;
+import org.receiverman.domains.fulfillment.FulfillmentToken;
+import org.receiverman.domains.ingress.DefaultEventParser;
+import org.receiverman.domains.ingress.ReceiverRegistry;
+import org.receiverman.domains.routing.AcceptResult;
+import org.receiverman.domains.routing.CompiledScenario;
+import org.receiverman.domains.routing.RoutedFulfillment;
+import org.receiverman.domains.routing.ScenarioCompiler;
+import org.receiverman.domains.routing.ScenarioRouter;
+import org.receiverman.domains.routing.ScenarioRun;
+import org.receiverman.domains.routing.ScenarioVerifier;
+import org.receiverman.domains.routing.StreamingScenarioVerifier;
+import org.receiverman.domains.scenario.Condition;
+import org.receiverman.domains.scenario.EventExpect;
+import org.receiverman.domains.scenario.FieldAssertion;
+import org.receiverman.domains.scenario.SupplierScenario;
+import org.receiverman.domains.supplier.Supplier;
+import org.receiverman.domains.supplier.SupplierTemplate;
+import org.receiverman.domains.supplier.SupplierTemplateLoader;
 
 public class ReceiverManTest {
     @Test public void testIntensionCalculus() throws Exception {
@@ -342,8 +342,8 @@ public class ReceiverManTest {
             new Supplier("Acme", List.of(scenario)),
             "pid.patientId",
             List.of(
-                new org.receiverman.domains.ReceiverSpec("hl7", "hl7"),
-                new org.receiverman.domains.ReceiverSpec("streaming", "streaming")
+                new org.receiverman.domains.ingress.ReceiverSpec("hl7", "hl7"),
+                new org.receiverman.domains.ingress.ReceiverSpec("streaming", "streaming")
             )
         );
         ReceiverRegistry registry = new ReceiverRegistry()
@@ -382,7 +382,7 @@ public class ReceiverManTest {
         SupplierTemplate template = new SupplierTemplate(
             new Supplier("Acme", List.of(scenario)),
             "pid.patientId",
-            List.of(new org.receiverman.domains.ReceiverSpec("hl7", "hl7-parser"))
+            List.of(new org.receiverman.domains.ingress.ReceiverSpec("hl7", "hl7-parser"))
         );
         ReceiverRegistry registry = new ReceiverRegistry()
             .parser("hl7-parser", (raw, receivedAt) -> ParsedEvent.of(raw, receivedAt, Map.of(
@@ -441,7 +441,7 @@ public class ReceiverManTest {
         SupplierTemplate template = new SupplierTemplate(
             new Supplier("Acme", List.of(scenario)),
             "pid.patientId",
-            List.of(new org.receiverman.domains.ReceiverSpec("hl7", "default"))
+            List.of(new org.receiverman.domains.ingress.ReceiverSpec("hl7", "default"))
         );
         ReceiverManRuntime runtime = ReceiverManRuntime.fromTemplate(
             template,

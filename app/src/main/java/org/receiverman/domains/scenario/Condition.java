@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.scenario;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -8,6 +8,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
+import org.receiverman.domains.fulfillment.FulfillmentToken;
+import org.receiverman.domains.supplier.Supplier;
 
 public record Condition(
     String name,

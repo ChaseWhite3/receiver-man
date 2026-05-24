@@ -1,7 +1,9 @@
-package org.receiverman.domains;
+package org.receiverman.domains.supplier;
 
 import java.util.List;
 import java.util.Optional;
+
+import org.receiverman.domains.ingress.ReceiverSpec;
 
 public record SupplierTemplate(Supplier supplier, String routeBy, List<ReceiverSpec> receivers) {
   public SupplierTemplate(Supplier supplier, String routeBy) {

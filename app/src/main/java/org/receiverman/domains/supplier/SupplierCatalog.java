@@ -1,8 +1,12 @@
-package org.receiverman.domains;
+package org.receiverman.domains.supplier;
 
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.List;
+
+import org.receiverman.domains.scenario.Condition;
+import org.receiverman.domains.scenario.FieldAssertion;
+import org.receiverman.domains.scenario.SupplierScenario;
 
 public final class SupplierCatalog {
   private final List<Supplier> suppliers = new ArrayList<>();

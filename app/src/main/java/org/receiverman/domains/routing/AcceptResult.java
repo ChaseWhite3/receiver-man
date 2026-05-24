@@ -1,7 +1,9 @@
-package org.receiverman.domains;
+package org.receiverman.domains.routing;
 
 import java.util.Optional;
 import java.util.function.Consumer;
+
+import org.receiverman.domains.fulfillment.FulfillmentToken;
 
 public record AcceptResult(Status status, FulfillmentToken token, String diagnostic) {
   public enum Status {

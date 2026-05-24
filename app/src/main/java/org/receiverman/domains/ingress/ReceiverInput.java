@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.ingress;
 
 import java.time.Clock;
 import java.time.Instant;
@@ -6,11 +6,12 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
+import org.receiverman.domains.supplier.SupplierTemplate;
 
-final class ReceiverInput {
+public final class ReceiverInput {
   private ReceiverInput() {}
 
-  static ParsedEvent parse(
+  public static ParsedEvent parse(
       SupplierTemplate template,
       ReceiverRegistry registry,
       Clock clock,

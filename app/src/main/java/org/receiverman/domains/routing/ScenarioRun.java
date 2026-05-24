@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.routing;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -6,6 +6,8 @@ import java.time.Instant;
 import java.util.Optional;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
+import org.receiverman.domains.fulfillment.FulfillmentToken;
+import org.receiverman.domains.scenario.Condition;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

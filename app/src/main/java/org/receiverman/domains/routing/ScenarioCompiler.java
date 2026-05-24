@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.routing;
 
 import java.util.List;
 import java.util.function.Consumer;
@@ -7,6 +7,10 @@ import org.receiverman.descriptors.entities.ParsedEvent;
 import org.receiverman.descriptors.functional.Intension;
 import org.receiverman.descriptors.functional.Intensions;
 import org.receiverman.descriptors.predicates.Become;
+import org.receiverman.domains.fulfillment.FulfillmentToken;
+import org.receiverman.domains.scenario.Condition;
+import org.receiverman.domains.scenario.SupplierScenario;
+import org.receiverman.domains.supplier.Supplier;
 
 public final class ScenarioCompiler {
   public CompiledScenario compile(Supplier supplier, SupplierScenario scenario) {

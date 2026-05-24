@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.fulfillment;
 
 import java.util.Comparator;
 import java.util.List;
@@ -13,7 +13,7 @@ import org.receiverman.descriptors.entities.ParsedEvent;
 
 /**
  * Collects a sequence of typed values extracted from an event stream, in arrival order.
- * Use {@link ReceiverManBus#track(Function)} to obtain one.
+ * Use {@code ReceiverManBus#track} to obtain one.
  *
  * <p>The series records every value for which the extractor returns a non-empty result.
  * Events where the extractor returns {@link Optional#empty()} are silently skipped, so one
@@ -45,7 +45,7 @@ public final class ValueSeries<T extends Comparable<T>> {
   private final CopyOnWriteArrayList<T> collected = new CopyOnWriteArrayList<>();
   private final EventStream.Subscription subscription;
 
-  ValueSeries(EventBus<ParsedEvent> events, Function<ParsedEvent, Optional<T>> extractor) {
+  public ValueSeries(EventBus<ParsedEvent> events, Function<ParsedEvent, Optional<T>> extractor) {
     this.subscription = events.subscribe(event ->
         extractor.apply(event).ifPresent(collected::add)
     );

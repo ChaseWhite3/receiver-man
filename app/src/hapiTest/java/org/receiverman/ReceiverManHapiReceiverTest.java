@@ -11,10 +11,10 @@ import java.util.List;
 import java.util.Map;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
-import org.receiverman.domains.DefaultEventParser;
-import org.receiverman.domains.FulfillmentToken;
 import org.receiverman.domains.ReceiverManBus;
-import org.receiverman.domains.ValueSeries;
+import org.receiverman.domains.fulfillment.FulfillmentToken;
+import org.receiverman.domains.fulfillment.ValueSeries;
+import org.receiverman.domains.ingress.DefaultEventParser;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.testng.annotations.Test;
@@ -162,7 +162,7 @@ public class ReceiverManHapiReceiverTest {
     }
   }
 
-  private static final class HapiHl7Parser implements org.receiverman.domains.EventParser {
+  private static final class HapiHl7Parser implements org.receiverman.domains.ingress.EventParser {
     private static final Logger LOG = LoggerFactory.getLogger(HapiHl7Parser.class);
     private final HapiContext context = new DefaultHapiContext();
 

@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.routing;
 
 import java.time.Clock;
 import java.time.Duration;
@@ -9,7 +9,13 @@ import java.util.List;
 
 import org.receiverman.descriptors.entities.Event;
 import org.receiverman.descriptors.entities.ParsedEvent;
-import org.receiverman.domains.FulfillmentReport.ConditionResult;
+import org.receiverman.domains.fulfillment.FulfillmentReport;
+import org.receiverman.domains.fulfillment.FulfillmentReport.ConditionResult;
+import org.receiverman.domains.ingress.DefaultEventParser;
+import org.receiverman.domains.ingress.EventParser;
+import org.receiverman.domains.scenario.Condition;
+import org.receiverman.domains.scenario.SupplierScenario;
+import org.receiverman.domains.supplier.Supplier;
 
 public final class ScenarioVerifier {
   private final EventParser parser;

@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.scenario;
 
 import java.time.Duration;
 import java.util.ArrayList;
@@ -10,7 +10,7 @@ public final class ScenarioBuilder {
   private final List<ConditionBuilder> conditions = new ArrayList<>();
   private ConditionBuilder current;
 
-  ScenarioBuilder(String name) {
+  public ScenarioBuilder(String name) {
     this.name = name;
   }
 

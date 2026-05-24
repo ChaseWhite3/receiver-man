@@ -1,6 +1,8 @@
-package org.receiverman.domains;
+package org.receiverman.domains.supplier;
 
 import java.util.List;
+
+import org.receiverman.domains.scenario.SupplierScenario;
 
 public record Supplier(String name, List<SupplierScenario> scenarios) {
   public Supplier {

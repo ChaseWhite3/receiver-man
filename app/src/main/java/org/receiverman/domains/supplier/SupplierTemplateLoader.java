@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.supplier;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -9,6 +9,12 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
+import org.receiverman.domains.ingress.ReceiverSpec;
+import org.receiverman.domains.scenario.Condition;
+import org.receiverman.domains.scenario.FieldAssertion;
+import org.receiverman.domains.scenario.SupplierScenario;
+import org.receiverman.domains.scenario.TokenSpec;
 
 public final class SupplierTemplateLoader {
   public SupplierTemplate load(Path path) throws IOException {

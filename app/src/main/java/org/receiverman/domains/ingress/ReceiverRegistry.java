@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.ingress;
 
 import java.util.Map;
 import java.util.Optional;

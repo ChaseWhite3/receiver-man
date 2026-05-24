@@ -1,4 +1,4 @@
-package org.receiverman.domains;
+package org.receiverman.domains.routing;
 
 import java.util.Optional;
 import java.util.function.Consumer;

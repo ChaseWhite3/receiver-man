@@ -1,9 +1,11 @@
-package org.receiverman.domains;
+package org.receiverman.domains.scenario;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
+import org.receiverman.domains.fulfillment.FulfillmentToken;
+import org.receiverman.domains.supplier.Supplier;
 
 public record TokenSpec(
     String nameTemplate,
