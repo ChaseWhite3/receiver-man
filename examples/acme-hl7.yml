@@ -1,0 +1,26 @@
+supplier: Acme HL7
+routeBy: pid.patientId
+scenarios:
+  - name: Admission result flow
+    expect:
+      - name: Admission received
+        within: 10s
+        maxAge: 5m
+        emit: "admission:{{pid.patientId}}:{{msh.messageControlId}}"
+        match:
+          - field: msh.messageType
+            equals: ADT^A01
+          - field: msh.messageControlId
+            matches: "^ACME-[0-9]+$"
+          - field: pid.patientId
+            exists: true
+
+      - name: Observation result received
+        within: 10s
+        maxAge: 5m
+        emit: "result:{{pid.patientId}}:{{obr.placerOrderNumber}}"
+        match:
+          - field: msh.messageType
+            equals: ORU^R01
+          - field: obr.placerOrderNumber
+            exists: true
