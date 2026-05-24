@@ -9,6 +9,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletionStage;
 
 import org.receiverman.descriptors.entities.ParsedEvent;
 import org.receiverman.domains.ReceiverManBus;
@@ -94,7 +95,7 @@ public class ReceiverManHapiReceiverTest {
         "vitals",
         event -> event.field("obx.temperature").map(Double::parseDouble)
     );
-    var pending = bus.awaitAll();
+    CompletionStage<List<FulfillmentToken>> pending = bus.awaitAll();
 
     bus.accept("vitals", "msh.messageType=ORU^R01 obx.temperature=36.5");
     bus.accept("vitals", "msh.messageType=ORU^R01 obx.temperature=37.0");
@@ -170,8 +171,29 @@ public class ReceiverManHapiReceiverTest {
     public ParsedEvent parse(String raw, Instant receivedAt) {
       try {
         Message message = context.getPipeParser().parse(raw);
+        // Consider MSH|^~\&|SENDER|FAC|RECEIVER|FAC|20260524120000||ADT^A01|MSG-1|P|2.5
+        //
+        // HL7 fields are numbered.
+        //
+        // MSH-1  = |
+        // MSH-2  = ^~\&
+        // MSH-3  = SENDER
+        // ...
+        // MSH-9  = ADT^A01
+        //
+        // But MSH-9 itself is composite:
+        //ADT^A01
+        // ↑   ↑
+        // |   |
+        // 1   2
+        // So terser.get("/MSH-9-1") means:
+        // segment MSH
+        // field 9
+        // component 1
         Terser terser = new Terser(message);
         String type = terser.get("/MSH-9-1") + "^" + terser.get("/MSH-9-2");
+
+        // here goes ReceiverMan's internal model. I.e. We extract to normalize the fields.
         ParsedEvent event = ParsedEvent.of(raw, receivedAt, Map.of(
             "msh.messageType",      type,
             "msh.messageControlId", terser.get("/MSH-10"),
