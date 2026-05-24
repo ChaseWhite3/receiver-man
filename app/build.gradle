@@ -69,6 +69,7 @@ configurations {
 dependencies {
     hapiTestImplementation libs.hapi.base
     hapiTestImplementation libs.hapi.structures.v25
+    hapiTestRuntimeOnly libs.slf4j.simple
 }
 
 tasks.register('hapiTest', Test) {

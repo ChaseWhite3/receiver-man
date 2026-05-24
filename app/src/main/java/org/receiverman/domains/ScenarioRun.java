@@ -49,14 +49,34 @@ public final class ScenarioRun {
     }
     if (!step.matches(event, clock.instant())) {
       String diagnostic = step.diagnose(event, clock.instant());
-      LOG.debug(
-          "ReceiverMan scenario step not fulfilled yet. supplier='{}', scenario='{}', step='{}'.{}{}",
-          compiledScenario.supplier().name(),
-          compiledScenario.scenario().name(),
-          step.name(),
-          System.lineSeparator(),
-          diagnostic
-      );
+      long passedAssertions = step.assertions().stream()
+          .filter(assertion -> assertion.matches(event))
+          .count();
+      long totalAssertions = step.assertions().size();
+      if (passedAssertions > 0) {
+        LOG.warn(
+            ">>>>> NEAR MISS — scenario step partially matched ({}/{} assertions passed)."
+                + " supplier='{}', scenario='{}', step='{}'. Fix the remaining failures:{}{}"
+                + "{}  (passed {} of {} assertions)",
+            passedAssertions, totalAssertions,
+            compiledScenario.supplier().name(),
+            compiledScenario.scenario().name(),
+            step.name(),
+            System.lineSeparator(),
+            diagnostic,
+            System.lineSeparator(),
+            passedAssertions, totalAssertions
+        );
+      } else {
+        LOG.debug(
+            "ReceiverMan scenario step not fulfilled yet. supplier='{}', scenario='{}', step='{}'.{}{}",
+            compiledScenario.supplier().name(),
+            compiledScenario.scenario().name(),
+            step.name(),
+            System.lineSeparator(),
+            diagnostic
+        );
+      }
       return AcceptResult.waiting(diagnostic);
     }
 

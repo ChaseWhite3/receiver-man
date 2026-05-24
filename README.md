@@ -1,6 +1,37 @@
-This is conceptually based on Kripke models and the book "Word Meaning and Montague Grammar" by David R. Dowty.
+# ReceiverMan
 
-ReceiverMan is now also runnable as a small CLI application for checking whether supplier event feeds satisfy ordered conditions.
+ReceiverMan is built around one idea: **declare the shape of what should happen, get back a handle to the result as if it already has, and let the runtime close the gap.**
+
+When you write a scenario you are not checking anything yet. You are writing down a description of a fact — "an admission for patient P123 will have arrived, followed by a result" — and handing it to the runtime, which watches the incoming event stream until reality matches that description.
+
+```java
+ReceiverManBus bus = ReceiverManBus.builder()
+    .receiver("hapi-hl7", new HapiHl7Parser())
+    .scenario("Admission result flow")
+        .expect("Admission received")
+            .from("hapi-hl7")
+            .where("msh.messageType").equalsTo("ADT^A01")
+            .where("pid.patientId").equalsTo("P123")
+            .produces("admitted", "admission:{{pid.patientId}}")
+        .thenExpect("Result received")
+            .from("hapi-hl7")
+            .where("msh.messageType").equalsTo("ORU^R01")
+            .produces("result-received", "result:{{pid.patientId}}")
+    .build();
+
+// This future already exists. It will complete when the world catches up.
+List<FulfillmentToken> trace = bus.awaitAll().toCompletableFuture().get(30, SECONDS);
+```
+
+`bus.awaitAll()` hands you back a `List<FulfillmentToken>` that *will exist*, and you write code against it as if it already does. The steps in the builder are not instructions to execute — they are a contract about what the event stream is expected to contain.
+
+This design is grounded in intensional logic and draws on Kripke possible-world semantics and David R. Dowty's work on word meaning and aspect. The internal type `Intension<E, T>` (note the spelling) represents the *meaning* of a value — what it will be across worlds and time — rather than its current extension. `Become.firstMatch(...)` uses the linguistic **inchoative** aspect: it describes the transition *into* a state rather than the state itself. A scenario is compiled into a chain of `Become` intensions sequenced with `Intensions.then(...)`, each waiting for reality to satisfy it before the next begins.
+
+The practical consequence is that callers work at the level of *what should happen* rather than *how to detect it*. The runtime handles the observation, sequencing, timeouts, near-miss diagnostics, and fulfillment token rendering.
+
+---
+
+ReceiverMan is also runnable as a small CLI application for checking whether supplier event feeds satisfy ordered conditions.
 
 Run the navigable menu with:
 

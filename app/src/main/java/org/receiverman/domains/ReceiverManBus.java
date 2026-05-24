@@ -1,11 +1,13 @@
 package org.receiverman.domains;
 
 import java.time.Clock;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.function.Consumer;
 
 import org.receiverman.descriptors.World;
 import org.receiverman.descriptors.entities.EventBus;
@@ -37,10 +39,69 @@ public final class ReceiverManBus {
     return new ReceiverManBus(template, registry, clock);
   }
 
+  public static ReceiverManBuilder builder() {
+    return new ReceiverManBuilder();
+  }
+
+  /** Await the first (and typically only) scenario. */
+  public CompletionStage<FulfillmentToken> await() {
+    return doAwait(findScenario(null), token -> {});
+  }
+
+  /** Await a named scenario. */
   public CompletionStage<FulfillmentToken> await(String scenarioName) {
-    SupplierScenario scenario = findScenario(scenarioName);
-    return compiler.compileIntension(template.supplier(), scenario)
+    return doAwait(findScenario(scenarioName), token -> {});
+  }
+
+  /**
+   * Await the first scenario, calling {@code onStep} as each step is fulfilled
+   * (including the final step).
+   */
+  public CompletionStage<FulfillmentToken> await(Consumer<FulfillmentToken> onStep) {
+    return doAwait(findScenario(null), onStep);
+  }
+
+  /**
+   * Await a named scenario, calling {@code onStep} as each step is fulfilled
+   * (including the final step).
+   */
+  public CompletionStage<FulfillmentToken> await(String scenarioName, Consumer<FulfillmentToken> onStep) {
+    return doAwait(findScenario(scenarioName), onStep);
+  }
+
+  /**
+   * Await the first scenario and collect every fulfilled step token into an ordered list.
+   * The list contains one entry per scenario step, in fulfillment order, including the final step.
+   */
+  public CompletionStage<List<FulfillmentToken>> awaitAll() {
+    return awaitAll(null);
+  }
+
+  /**
+   * Await a named scenario and collect every fulfilled step token into an ordered list.
+   */
+  public CompletionStage<List<FulfillmentToken>> awaitAll(String scenarioName) {
+    List<FulfillmentToken> steps = new ArrayList<>();
+    return doAwait(findScenario(scenarioName), steps::add)
+        .thenApply(ignored -> List.copyOf(steps));
+  }
+
+  /** @deprecated Use {@link #await()} instead. */
+  @Deprecated
+  public CompletionStage<FulfillmentToken> awaitFirstScenario() {
+    return await();
+  }
+
+  private CompletionStage<FulfillmentToken> doAwait(
+      SupplierScenario scenario,
+      Consumer<FulfillmentToken> onStep
+  ) {
+    return compiler.compileIntension(template.supplier(), scenario, onStep)
         .run(new World(clock), events)
+        .thenApply(finalToken -> {
+          onStep.accept(finalToken);
+          return finalToken;
+        })
         .exceptionallyCompose(error -> {
           String diagnostic = describeExpectationFailure(scenario, error);
           LOG.error("ReceiverMan expectation failed for supplier='{}', scenario='{}', routeField='{}'.{}{}",
@@ -50,16 +111,8 @@ public final class ReceiverManBus {
               System.lineSeparator(),
               diagnostic,
               error);
-          throw new CompletionException(new ReceiverManExpectationException(
-              diagnostic,
-              error
-          ));
+          throw new CompletionException(new ReceiverManExpectationException(diagnostic, error));
         });
-  }
-
-  public CompletionStage<FulfillmentToken> awaitFirstScenario() {
-    return compiler.compileIntension(template.supplier(), template.supplier().scenarios().getFirst())
-        .run(new World(clock), events);
   }
 
   public ParsedEvent accept(String receiverId, String raw) {

@@ -84,6 +84,11 @@ public final class ScenarioBuilder {
       return this;
     }
 
+    /** Shorthand for {@code .emitName(tokenName).emit(tokenTemplate)}. */
+    public ConditionBuilder produces(String tokenName, String tokenTemplate) {
+      return emitName(tokenName).emit(tokenTemplate);
+    }
+
     public ConditionBuilder payload(Map<String, String> payload) {
       this.payload = Map.copyOf(payload);
       return this;
